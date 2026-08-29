@@ -1,211 +1,121 @@
-# Overview
-A production-style deep learning pipeline for multi-class classification of jute crop pests using pretrained CNN backbones (EfficientNet, VGG16, DenseNet). This project demonstrates:
-- Transfer learning with frozen ImageNet backbones
-- tf.data input pipelines with augmentation & caching
-- Structured experiment logging
-- Automated evaluation with precision / recall / F1 / ROC-AUC
-- Model comparison across multiple architectures
-- Reproducible training with fixed random seeds
-- Unit tests using pytest
+# Jute Pest Image Classification
 
+A transfer-learning image classifier that identifies 17 species of jute crop pests from photographs, served via a production FastAPI + Docker inference API.
 
-# Project Structure
-The repository is organized as follows.  
+## Overview
+
+Three ImageNet-pretrained backbones (EfficientNetB0, VGG16, DenseNet201) were trained and evaluated using a two-stage transfer-learning strategy — frozen-backbone training followed by partial fine-tuning — with the best-performing model selected automatically and packaged for deployment.
+
+| |                                                   |
+|---|---------------------------------------------------|
+| **Task** | 17-class multi-class image classification         |
+| **Selected model** | EfficientNetB0 (fine-tuned)                       |
+| **Test macro AUC** | 0.99999                                           |
+| **Test accuracy** | 99%                                               |
+| **Serving** | FastAPI + Docker, single-model inference endpoint |
+
+## Dataset
+
+17 jute pest species, split into train/validation/test sets:
+
+Beet Armyworm · Black Hairy · Cutworm · Field Cricket · Jute Aphid · Jute Hairy · Jute Red Mite · Jute Semilooper · Jute Stem Girdler · Jute Stem Weevil · Leaf Beetle · Mealybug · Pod Borer · Scopula Emissaria · Termite · Termite odontotermes (Rambur) · Yellow Mite
+
+## Approach
+
+Each backbone was trained in two stages:
+
+1. **Initial training** — backbone frozen (ImageNet weights), only a custom classification head trained (`Dense(256) → BatchNorm → ReLU → Dropout → Dense(17)`), with data augmentation (flip, rotation, translation, zoom, contrast) applied ahead of the backbone.
+2. **Fine-tuning** — the final 20% of backbone layers unfrozen (BatchNorm layers kept frozen) and retrained at a lower learning rate.
+
+Early stopping and `ReduceLROnPlateau` were used at both stages, monitoring validation loss. The stage (initial vs. fine-tuned) that achieved the lower validation loss was retained for each backbone — fine-tuning won for all three:
+
+| Backbone | Initial val_loss | Fine-tuned val_loss | Stage retained |
+|---|---|---|---|
+| EfficientNetB0 | 0.3640 | **0.3216** | Fine-tuned |
+| VGG16 | 0.4692 | **0.3966** | Fine-tuned |
+| DenseNet201 | 0.3760 | **0.3352** | Fine-tuned |
+
+## Model Comparison
+
+Macro-averaged metrics across all three backbones (best stage per backbone):
+
+| Model | Val Precision | Val Recall | Val F1 | Val AUC | Test Precision | Test Recall | Test F1 | Test AUC |
+|---|---|---|---|---|---|---|---|---|
+| **EfficientNetB0** | 0.927 | 0.933 | 0.928 | **0.9958** | 0.989 | 0.989 | 0.989 | **0.99999** |
+| VGG16 | 0.879 | 0.881 | 0.876 | 0.9782 | 0.986 | 0.987 | 0.986 | 0.99997 |
+| DenseNet201 | 0.888 | 0.873 | 0.876 | 0.9952 | 0.982 | 0.981 | 0.981 | 0.99975 |
+
+**EfficientNetB0 (fine-tuned)** was selected as the deployment model based on validation macro AUC.
+
+### Per-class performance (selected model, test set)
+
+99% overall accuracy, with all 17 classes achieving F1 ≥ 0.92. The validation set is where the model's actual generalization limits show: classes with the fewest validation examples (Pod Borer: 3, Jute Semilooper: 5, Jute Hairy: 8) had the lowest F1 scores (0.67, 0.73, 0.82 respectively), consistent with limited support rather than a systematic weakness in the model.
+
+## Project Structure
 
 ```
 jute-pest-image-classification/
-│
-├── cache/                 # Disk cache for training dataset (not tracked in git - created at runtime)
-├── data/                  # Dataset root (not tracked in git - create and extract data after download separately)
-│   └── Jute_Pest_Dataset/
-│       ├── train/
-│       ├── val/
-│       └── test/
-│
-├── logs/                  # Per-run and per-backbone logs (not tracked in git - created at runtime)
-├── models/                # Saved best models (not tracked in git - created at runtime)
-├── notebook/              # Narrative style notebook for the project
-├── results/               # Metrics, plots, reports, comparisons (not tracked in git - created at runtime)
-│
+├── artifacts/          # Deployment package: selected model + manifest.json (git-tracked)
+├── data/                # Train/val/test image directories (gitignored)
+├── models/              # All trained checkpoints, full manifest (gitignored)
+├── results/             # Per-backbone plots, classification reports, comparison CSV/JSON (git-tracked)
+├── logs/                # Training logs (gitignored)
 ├── src/
-│   ├── config.py          # Global configuration
-│   ├── dataset.py         # Dataset creation & preprocessing
-│   ├── main.py            # Training + evaluation entry point
-│   ├── models.py          # Model architectures
-│   ├── utils.py           # Logging, metrics, plotting helpers
-│   └── tests.py           # Pytest test suite
-│
-├── requirements.txt
-├── requirements-dev.txt
-├── .gitignore
-└── README.md
+│   ├── app.py           # FastAPI application — serving endpoints
+│   ├── config.py        # Paths, hyperparameters, backbone list
+│   ├── dataset.py        # tf.data pipeline construction
+│   ├── inference.py      # Model loading, preprocessing, prediction logic
+│   ├── main.py           # Training orchestration (all backbones)
+│   ├── models.py         # Model architecture, backbone/preprocessing lookup
+│   └── utils.py          # Logging, evaluation, manifest generation
+├── tests/                # pytest suite (31 tests: API, inference, training pipeline)
+├── Dockerfile
+├── requirements.txt          # Full project (training + serving)
+├── requirements-serve.txt    # Serving-only subset (used by Dockerfile)
+└── requirements-dev.txt      # Test tooling
 ```
 
+The `artifacts/` directory holds only the single selected model checkpoint and its manifest — generated automatically at the end of training — keeping the deployment footprint independent of how many candidate models were trained.
 
-# Data sources
-This project uses the Jute Pest Dataset for training, validation, and testing which can be downloaded as a zip file from https://archive.ics.uci.edu/dataset/920/jute+pest+dataset
+## API
 
-Extract the contents to the data directory in project root.
-The data directory in project root should look like this after extraction.
-```
-data/
-└── Jute_Pest_Dataset/
-    ├── train/
-    │   ├── Beet Armyworm/
-    │   ├── Black Hairy/
-    │   ├── Cutworm/
-    │   ├── ... (other 17 classes)
-    │
-    ├── val/
-    │   ├── Beet Armyworm/
-    │   ├── Black Hairy/
-    │   ├── Cutworm/
-    │   ├── ... (same class folders as train)
-    │
-    └── test/
-        ├── Beet Armyworm/
-        ├── Black Hairy/
-        ├── Cutworm/
-        ├── ... (same class folders as train)
-```
-Each class folder should contain the corresponding pest images.
+Three endpoints, backed by a model loaded once at application startup:
 
-**Note:** 
-- The code loads images using tf.keras.utils.image_dataset_from_directory(), so correct folder structure is essential.
-- Labels are inferred from folder names.
-- Your validation and test sets must include all class subfolders present in training.
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/health` | Liveness check — reports whether the model loaded successfully |
+| `POST` | `/predict` | Upload an image (JPEG/PNG, ≤5MB) → returns predicted class, confidence, and top-3 probabilities |
+| `GET` | `/model/info` | Returns the deployed model's backbone, training stage, and validation/test AUC |
 
+Interactive API docs are available at `/docs` once the service is running.
 
-# Models
-Implemented backbones:
-- EfficientNetB0
-- VGG16
-- DenseNet201
+## Running Locally
 
-Each model:
-- Loads pretrained ImageNet weights
-- Freezes backbone layers
-- Adds a custom classification head:
-	- Dense + L2 regularization
-	- Batch normalization
-	- ReLU
-	- Dropout
-	- Softmax output
-Optimizer: Adam
-Loss: Categorical Cross-Entropy
-
-
-# Data Pipeline
-Implemented in dataset.py:
-- Resizing + normalization
-- Training-only data augmentation:
-	- Random crop
-	- Flip
-	- Rotation
-	- Translation
-	- Zoom
-	- Contrast
-- tf.data pipeline with:
-	- Disk caching for training only
-	- No caching for validation / test
-	- Prefetching with AUTOTUNE
-
-This avoids Windows file-locking issues while preserving training speed.
-
-
-# Configuration
-Key parameters (from config.py):
-- Image size: 224×224
-- Batch size: 16
-- Epochs: 30 (max)
-- Early stopping patience: 5
-- Learning rate: 1e-4
-- Dropout: 0.20
-- L2 regularization: 1e-4
-- Random seed: 42
-- Backbones to train:
-	- EfficientNetB0
-	- VGG16
-	- DenseNet201
-
-
-# Installation
-Create environment using:
-```
-conda create -n jute python=3.10
-conda activate jute
-```
-Then:
-- Install runtime dependencies via: pip install -r requirements.txt
-- Install dev dependencies via: pip install -r requirements-dev.txt
-
-
-# Jupyter Notebook
-The complete narrative analysis is available in:
-`notebook/analysis.ipynb`
-This notebook presents the project as a story with explanations, plots, and interpretations.
-
-
-# Training
-From project root run:
-
-`python src/main.py`
-
-The script will:
-1. Load datasets
-2. Train each backbone
-3. Save best model weights
-4. Save training curves
-5. Generate classification reports
-6. Compute macro precision / recall / F1 / ROC-AUC
-7. Export comparison tables (CSV + JSON)
-
-
-# Outputs
-For each backbone:
-```
-results/<backbone_name>/
-├── accuracy.png
-├── loss.png
-├── <backbone>_Train_classification_report.txt
-├── <backbone>_Val_classification_report.txt
-├── <backbone>_Test_classification_report.txt
-└── history.json
-```
-Global:
-```
-results/
-├── models_comparison.csv
-└── models_comparison.json
-```
-Models:
-```
-models/best_<backbone>.keras
-```
-Logs:
-```
-logs/
-├── EfficientNetB0.log
-├── VGG16.log
-└── DenseNet201.log
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+python src/main.py          # retrains all backbones and regenerates artifacts/
+uvicorn app:app --app-dir src --reload
 ```
 
+## Running with Docker
 
-# Logging Design
-- One run logger for console output
-- One child logger per backbone writing to its own log file
-- Timestamped structured format
+```bash
+docker build -t jute-pest-api .
+docker run -p 8000:8000 jute-pest-api
+```
 
+Visit `http://localhost:8000/docs` for interactive API documentation.
 
-# Running Tests 
-From root run:
+## Testing
 
-`pytest src/tests.py`
+```bash
+pytest tests/ -v
+```
 
-This runs lightweight functional tests. Includes:
-- Configuration sanity checks
-- Model forward pass tests
-- Preprocessing function validation
-- Optional dataset shape tests
-- Logging helper tests
-- Dataset tests are skipped automatically if dataset is not present.
+31 tests covering the FastAPI endpoints, inference/preprocessing logic, and the training pipeline's model-building, evaluation, and manifest-generation utilities.
+
+## Engineering Notes
+
+- **Manifest-driven deployment**: model selection happens once, at training time, based on validation macro AUC. The serving layer reads the selected backbone from `artifacts/manifest.json` rather than hardcoding it — retraining and redeploying a new winner requires no code changes.
+- **Train/serve preprocessing consistency**: backbone-specific normalization (e.g., EfficientNet's `preprocess_input`) is applied inside the model graph itself, not duplicated in the serving code — eliminating a common source of silent accuracy degradation in deployed CV models.
+- **Two-stage transfer learning**: partial fine-tuning (final 20% of backbone layers, BatchNorm excluded) improved validation loss for every backbone tested, and the initial-vs-fine-tuned comparison is made automatically rather than assumed.

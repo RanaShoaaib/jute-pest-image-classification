@@ -1,0 +1,23 @@
+                               precision    recall  f1-score   support
+
+                Beet Armyworm       0.95      0.88      0.91        40
+                  Black Hairy       0.97      1.00      0.98        30
+                      Cutworm       1.00      0.94      0.97        18
+                Field Cricket       1.00      1.00      1.00        14
+                   Jute Aphid       0.90      0.96      0.93        27
+                   Jute Hairy       0.78      0.88      0.82         8
+                Jute Red Mite       1.00      0.98      0.99        49
+              Jute Semilooper       0.67      0.80      0.73         5
+            Jute Stem Girdler       1.00      1.00      1.00         6
+             Jute Stem Weevil       0.99      0.99      0.99        71
+                  Leaf Beetle       1.00      1.00      1.00         9
+                     Mealybug       1.00      1.00      1.00        35
+                    Pod Borer       0.67      0.67      0.67         3
+            Scopula Emissaria       1.00      1.00      1.00         6
+                      Termite       1.00      0.77      0.87        26
+Termite odontotermes (Rambur)       0.86      1.00      0.92        36
+                  Yellow Mite       1.00      1.00      1.00        30
+
+                     accuracy                           0.96       413
+                    macro avg       0.93      0.93      0.93       413
+                 weighted avg       0.96      0.96      0.96       413

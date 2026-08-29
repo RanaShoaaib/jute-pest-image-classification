@@ -6,10 +6,8 @@ __pycache__/
 # C extensions
 *.so
 
-cache/
 logs/
 models/
-results/
 data/
 
 # Distribution / packaging

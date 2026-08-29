@@ -1,0 +1,26 @@
+{
+    "selected_backbone": "EfficientNetB0",
+    "stage": "finetuned",
+    "val_auc_macro": 0.9958307989172274,
+    "test_auc_macro": 0.9999918073078814,
+    "num_classes": 17,
+    "class_names": [
+        "Beet Armyworm",
+        "Black Hairy",
+        "Cutworm",
+        "Field Cricket",
+        "Jute Aphid",
+        "Jute Hairy",
+        "Jute Red Mite",
+        "Jute Semilooper",
+        "Jute Stem Girdler",
+        "Jute Stem Weevil",
+        "Leaf Beetle",
+        "Mealybug",
+        "Pod Borer",
+        "Scopula Emissaria",
+        "Termite",
+        "Termite odontotermes (Rambur)",
+        "Yellow Mite"
+    ]
+}
